@@ -216,3 +216,18 @@ export function generateAutoSyncedLinks(globalUsername: string): Array<{
     is_auto_synced: true,
   }));
 }
+
+/**
+ * Check if a social link is auto-syncable based on platform
+ */
+export function canAutoSync(platform: string): boolean {
+  return getAutoSyncablePlatforms().includes(platform);
+}
+
+/**
+ * Get platform display name with auto-sync indicator
+ */
+export function getPlatformDisplayName(platform: string, isAutoSynced: boolean = false): string {
+  const baseName = SOCIAL_PLATFORMS[platform]?.name || platform;
+  return isAutoSynced ? `${baseName} (Auto-synced)` : baseName;
+}

@@ -18,7 +18,9 @@ import {
   Settings,
   Zap,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Sync,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
@@ -26,7 +28,8 @@ import { ImageUpload } from './ImageUpload';
 import { CardPreview } from './CardPreview';
 import { MediaUpload } from './MediaUpload';
 import { ReviewsManager } from './ReviewsManager';
-import { generateSocialLink, SOCIAL_PLATFORMS } from '../utils/socialUtils';
+import { generateSocialLink, SOCIAL_PLATFORMS, generateAutoSyncedLinks } from '../utils/socialUtils';
+import { SuccessAnimation } from './SuccessAnimation';
 import type { Database } from '../lib/supabase';
 
 type BusinessCard = Database['public']['Tables']['business_cards']['Row'];
@@ -112,6 +115,8 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
   const [reviews, setReviews] = useState<any[]>([]);
   const [cardId, setCardId] = useState<string | null>(existingCard?.id || null);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
 
   const [formData, setFormData] = useState<FormData>({
     title: existingCard?.title || '',
@@ -265,7 +270,14 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
         setCardId(result.data.id);
       }
 
-      onSave();
+      // Show success animation
+      setShowSuccessAnimation(true);
+      
+      // Hide animation after 3 seconds and call onSave
+      setTimeout(() => {
+        setShowSuccessAnimation(false);
+        onSave();
+      }, 3000);
     } catch (error) {
       console.error('Error saving card:', error);
       alert('Failed to save card. Please try again.');
@@ -371,6 +383,87 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     }
   };
 
+  const handleAutoSyncSocialLinks = async () => {
+    if (!cardId || !formData.username) return;
+
+    try {
+      // Generate auto-synced links
+      const autoSyncedLinks = generateAutoSyncedLinks(formData.username);
+      
+      // Remove existing auto-synced links
+      await supabase
+        .from('social_links')
+        .delete()
+        .eq('card_id', cardId)
+        .eq('is_auto_synced', true);
+
+      // Insert new auto-synced links
+      const { data, error } = await supabase
+        .from('social_links')
+        .insert(
+          autoSyncedLinks.map((link, index) => ({
+            card_id: cardId,
+            platform: link.platform,
+            username: link.username,
+            url: link.url,
+            display_order: socialLinks.length + index,
+            is_active: true,
+            is_auto_synced: true,
+          }))
+        )
+        .select();
+
+      if (error) {
+        console.error('Error auto-syncing social links:', error);
+        alert('Failed to auto-sync social links. Please try again.');
+        return;
+      }
+
+      // Update local state
+      const newLinks = [...socialLinks, ...(data || [])];
+      setSocialLinks(newLinks);
+      setAutoSyncEnabled(true);
+      
+      alert('Social links auto-synced successfully!');
+    } catch (error) {
+      console.error('Error auto-syncing social links:', error);
+      alert('Failed to auto-sync social links. Please try again.');
+    }
+  };
+
+  const handleUpdateSocialLink = async (linkId: string, newUsername: string) => {
+    try {
+      const link = socialLinks.find(l => l.id === linkId);
+      if (!link) return;
+
+      const newUrl = generateSocialLink(link.platform, newUsername);
+      
+      const { error } = await supabase
+        .from('social_links')
+        .update({ 
+          username: newUsername, 
+          url: newUrl,
+          is_auto_synced: false // Mark as custom when manually edited
+        })
+        .eq('id', linkId);
+
+      if (error) {
+        console.error('Error updating social link:', error);
+        return;
+      }
+
+      // Update local state
+      const updatedLinks = socialLinks.map(l =>
+        l.id === linkId 
+          ? { ...l, username: newUsername, url: newUrl, is_auto_synced: false }
+          : l
+      );
+      setSocialLinks(updatedLinks);
+    } catch (error) {
+      console.error('Error updating social link:', error);
+    }
+  };
+
   const addSocialLink = async (platform: string, username: string) => {
     if (!cardId) return;
 
@@ -385,6 +478,7 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
           url,
           display_order: socialLinks.length,
           is_active: true,
+          is_auto_synced: false,
         })
         .select()
         .single();
@@ -643,6 +737,31 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Social Media Links</h3>
         
+        {/* Auto-Sync Section */}
+        {formData.username && (
+          <div className="bg-blue-50 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h4 className="font-medium text-blue-900">Auto-Sync Social Links</h4>
+                <p className="text-sm text-blue-700">
+                  Automatically create social links using your card username: <strong>@{formData.username}</strong>
+                </p>
+              </div>
+              <button
+                onClick={handleAutoSyncSocialLinks}
+                disabled={!cardId}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Sync className="w-4 h-4" />
+                Auto-Sync Links
+              </button>
+            </div>
+            <div className="text-xs text-blue-600">
+              This will create links for: Instagram, LinkedIn, GitHub, Twitter, YouTube, Facebook, and more
+            </div>
+          </div>
+        )}
+
         {/* Add Social Link Form */}
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
           <SocialLinkForm onAdd={addSocialLink} />
@@ -651,22 +770,53 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
         {/* Existing Social Links */}
         <div className="space-y-3">
           {socialLinks.map((link) => (
-            <div key={link.id} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+            <div key={link.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                  link.is_auto_synced ? 'bg-green-100' : 'bg-blue-100'
+                }`}>
                   <Share2 className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">{link.platform}</p>
-                  <p className="text-sm text-gray-500">{link.username}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-gray-900">{link.platform}</p>
+                    {link.is_auto_synced && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
+                        <Sync className="w-3 h-3" />
+                        Auto-synced
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-gray-400">@</span>
+                    <input
+                      type="text"
+                      value={link.username || ''}
+                      onChange={(e) => handleUpdateSocialLink(link.id, e.target.value)}
+                      className="text-sm text-gray-600 bg-transparent border-none p-0 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1"
+                      placeholder="username"
+                    />
+                  </div>
                 </div>
               </div>
-              <button
-                onClick={() => removeSocialLink(link.id)}
-                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <AlertCircle className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Open link"
+                >
+                  <Globe className="w-4 h-4" />
+                </a>
+                <button
+                  onClick={() => removeSocialLink(link.id)}
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Remove link"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -674,7 +824,12 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
         {socialLinks.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             <Share2 className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p>No social links added yet</p>
+            <p className="mb-2">No social links added yet</p>
+            {formData.username && (
+              <p className="text-sm text-blue-600">
+                Try the Auto-Sync feature above to quickly add links for @{formData.username}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -879,6 +1034,10 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
   );
 
   return (
+    <>
+      {/* Success Animation Overlay */}
+      {showSuccessAnimation && <SuccessAnimation />}
+      
     <div className="max-w-7xl mx-auto">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Editor Panel */}
@@ -1029,6 +1188,7 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
         </div>
       </div>
     </div>
+    </>
   );
 };
 
