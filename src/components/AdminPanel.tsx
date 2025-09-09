@@ -402,7 +402,7 @@ export const AdminPanel: React.FC = () => {
           <div className="flex items-center justify-between h-16 px-6">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => setSidebarOpen(false)}
+                onClick={() => setSidebarOpen(true)}
                 className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
               >
                 <Menu className="w-5 h-5" />
