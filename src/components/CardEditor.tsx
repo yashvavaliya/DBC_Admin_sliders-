@@ -1,27 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Save, 
-  Eye, 
-  ArrowLeft, 
-  Palette, 
-  Type, 
-  Layout, 
-  Share2,
-  Globe,
-  Lock,
-  AlertCircle,
-  Upload,
-  Download,
-  Copy,
-  Trash2,
-  Plus,
-  Settings,
-  Zap,
-  Sparkles,
-  RefreshCw,
-  Sync,
-  Check
-} from 'lucide-react';
+import { Save, Eye, ArrowLeft, Palette, Type, Layout, Share2, Globe, Lock, AlertCircle, Upload, Download, Copy, Trash2, Plus, Settings, Zap, Sparkles, RefreshCw, FolderSync as Sync, Check } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { ImageUpload } from './ImageUpload';
