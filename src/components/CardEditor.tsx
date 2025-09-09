@@ -272,7 +272,7 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
         <div className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name *
+              Name *
             </label>
             <input
               type="text"
