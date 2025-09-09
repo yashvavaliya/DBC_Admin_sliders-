@@ -13,12 +13,15 @@ import {
   Edit3,
   Trash2,
   Copy,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { CardEditor } from './CardEditor';
 import { CardPreview } from './CardPreview';
+import { AnalyticsPage } from './AnalyticsPage';
 import type { Database } from '../lib/supabase';
 
 type BusinessCard = Database['public']['Tables']['business_cards']['Row'];
@@ -31,6 +34,7 @@ export const AdminPanel: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<ActiveTab>('cards');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cards, setCards] = useState<BusinessCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null);
@@ -293,24 +297,6 @@ export const AdminPanel: React.FC = () => {
     </div>
   );
 
-  const renderAnalytics = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Analytics</h2>
-        <p className="text-gray-600">Track your cards' performance and engagement</p>
-      </div>
-      
-      {/* Analytics content will be implemented here */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-        <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Analytics Coming Soon</h3>
-        <p className="text-gray-600">
-          Detailed analytics and insights for your business  will be available here.
-        </p>
-      </div>
-    </div>
-  );
-
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -333,18 +319,33 @@ export const AdminPanel: React.FC = () => {
       {/* Sidebar */}
       <div className={`${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}>
+      } ${
+        sidebarCollapsed ? 'lg:w-16' : 'lg:w-64'
+      } fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl transform transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'lg:justify-center' : ''}`}>
             <CreditCard className="w-8 h-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900"></span>
+            {!sidebarCollapsed && <span className="text-xl font-bold text-gray-900">DBC</span>}
           </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? (
+                <ChevronRight className="w-5 h-5" />
+              ) : (
+                <ChevronLeft className="w-5 h-5" />
+              )}
+            </button>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <nav className="mt-6 px-3">
@@ -357,40 +358,44 @@ export const AdminPanel: React.FC = () => {
                   setActiveTab(item.id as ActiveTab);
                   setSidebarOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors mb-1 ${
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-3 py-3 rounded-lg text-left transition-colors mb-1 ${
                   activeTab === item.id
                     ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-600'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
+                title={sidebarCollapsed ? item.label : undefined}
               >
                 <Icon className="w-5 h-5" />
-                {item.label}
+                {!sidebarCollapsed && item.label}
               </button>
             );
           })}
         </nav>
 
         {/* User Info */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-          <div className="flex items-center gap-3 mb-3">
+        <div className={`absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 ${sidebarCollapsed ? 'px-2' : ''}`}>
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} mb-3`}>
             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
               <User className="w-5 h-5 text-blue-600" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {user?.email}
-              </p>
-              <p className="text-xs text-gray-500">
-                {cards.length} card{cards.length !== 1 ? 's' : ''}
-              </p>
-            </div>
+            {!sidebarCollapsed && (
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.email}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {cards.length} card{cards.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+            )}
           </div>
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2'} px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors`}
+            title={sidebarCollapsed ? 'Sign Out' : undefined}
           >
             <LogOut className="w-4 h-4" />
-            Sign Out
+            {!sidebarCollapsed && 'Sign Out'}
           </button>
         </div>
       </div>
@@ -433,7 +438,7 @@ export const AdminPanel: React.FC = () => {
               }}
             />
           )}
-          {activeTab === 'analytics' && renderAnalytics()}
+          {activeTab === 'analytics' && <AnalyticsPage />}
           {activeTab === 'settings' && renderSettings()}
         </main>
       </div>

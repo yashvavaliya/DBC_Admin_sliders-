@@ -9,7 +9,16 @@ import {
   Share2,
   Globe,
   Lock,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Download,
+  Copy,
+  Trash2,
+  Plus,
+  Settings,
+  Zap,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
@@ -71,12 +80,17 @@ const THEMES = [
   { name: 'Royal Purple', primary: '#8B5CF6', secondary: '#7C3AED', background: '#FFFFFF', text: '#1F2937' },
   { name: 'Rose Pink', primary: '#EC4899', secondary: '#DB2777', background: '#FFFFFF', text: '#1F2937' },
   { name: 'Dark Mode', primary: '#60A5FA', secondary: '#3B82F6', background: '#1F2937', text: '#F9FAFB' },
+  { name: 'Emerald', primary: '#059669', secondary: '#047857', background: '#FFFFFF', text: '#1F2937' },
+  { name: 'Indigo', primary: '#4F46E5', secondary: '#3730A3', background: '#FFFFFF', text: '#1F2937' },
+  { name: 'Teal', primary: '#0D9488', secondary: '#0F766E', background: '#FFFFFF', text: '#1F2937' },
+  { name: 'Amber', primary: '#D97706', secondary: '#B45309', background: '#FFFFFF', text: '#1F2937' },
 ];
 
 const SHAPES = [
   { id: 'rectangle', name: 'Rectangle', preview: 'rounded-lg' },
   { id: 'rounded', name: 'Rounded', preview: 'rounded-2xl' },
   { id: 'circle', name: 'Circle', preview: 'rounded-full aspect-square' },
+  { id: 'hexagon', name: 'Hexagon', preview: 'rounded-3xl' },
 ];
 
 const LAYOUTS = [
@@ -84,16 +98,20 @@ const LAYOUTS = [
   { style: 'modern', alignment: 'left', font: 'Inter', name: 'Modern Left' },
   { style: 'classic', alignment: 'center', font: 'Georgia', name: 'Classic Center' },
   { style: 'minimal', alignment: 'left', font: 'Helvetica', name: 'Minimal Left' },
+  { style: 'creative', alignment: 'center', font: 'Poppins', name: 'Creative Center' },
+  { style: 'elegant', alignment: 'right', font: 'Playfair Display', name: 'Elegant Right' },
 ];
 
 export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, onCancel }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'basic' | 'contact' | 'social' | 'media' | 'reviews' | 'design' | 'preview'>('basic');
   const [saving, setSaving] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
   const [mediaItems, setMediaItems] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
   const [cardId, setCardId] = useState<string | null>(existingCard?.id || null);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
 
   const [formData, setFormData] = useState<FormData>({
     title: existingCard?.title || '',
@@ -121,6 +139,17 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     }
   }, [existingCard]);
 
+  // Auto-save functionality
+  useEffect(() => {
+    if (!cardId || !user) return;
+    
+    const autoSaveTimer = setTimeout(() => {
+      handleAutoSave();
+    }, 3000); // Auto-save after 3 seconds of inactivity
+    
+    return () => clearTimeout(autoSaveTimer);
+  }, [formData, cardId, user]);
+
   const loadCardData = async () => {
     if (!existingCard) return;
 
@@ -145,6 +174,42 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleAutoSave = async () => {
+    if (!user || !cardId || saving) return;
+    
+    setAutoSaving(true);
+    try {
+      const cardData = {
+        user_id: user.id,
+        title: formData.title,
+        company: formData.company,
+        position: formData.profession,
+        phone: formData.phone,
+        email: formData.email,
+        website: formData.website,
+        avatar_url: formData.avatar_url,
+        bio: formData.tagline,
+        whatsapp: formData.whatsapp,
+        address: formData.address,
+        map_link: formData.map_link,
+        theme: formData.theme,
+        shape: formData.shape,
+        layout: formData.layout,
+        is_published: formData.is_published,
+        slug: formData.username || null,
+      };
+
+      await supabase
+        .from('business_cards')
+        .update(cardData)
+        .eq('id', cardId);
+    } catch (error) {
+      console.error('Auto-save error:', error);
+    } finally {
+      setAutoSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -209,6 +274,103 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     }
   };
 
+  const handleDuplicateCard = async () => {
+    if (!user || !existingCard) return;
+    
+    setSaving(true);
+    try {
+      const { id, created_at, updated_at, slug, ...cardData } = existingCard;
+      
+      const newCardData = {
+        ...cardData,
+        title: `${formData.title} (Copy)`,
+        is_published: false,
+        view_count: 0,
+        slug: null // Let the system generate a new slug
+      };
+      
+      const { data, error } = await supabase
+        .from('business_cards')
+        .insert(newCardData)
+        .select()
+        .single();
+        
+      if (error) {
+        console.error('Error duplicating card:', error);
+        alert('Failed to duplicate card. Please try again.');
+        return;
+      }
+      
+      // Redirect to edit the new card
+      window.location.href = `/admin?edit=${data.id}`;
+    } catch (error) {
+      console.error('Error duplicating card:', error);
+      alert('Failed to duplicate card. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExportCard = () => {
+    const cardData = {
+      ...formData,
+      socialLinks,
+      mediaItems,
+      reviews,
+      exportedAt: new Date().toISOString()
+    };
+    
+    const dataStr = JSON.stringify(cardData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${formData.username || 'business-card'}-export.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportCard = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target?.result as string);
+        
+        // Update form data with imported data
+        setFormData({
+          ...formData,
+          ...importedData,
+          username: importedData.username + '-imported' // Avoid slug conflicts
+        });
+        
+        if (importedData.socialLinks) {
+          setSocialLinks(importedData.socialLinks);
+        }
+        
+        alert('Card data imported successfully!');
+      } catch (error) {
+        alert('Invalid card data file. Please check the format.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const generateRandomTheme = () => {
+    const randomTheme = THEMES[Math.floor(Math.random() * THEMES.length)];
+    handleInputChange('theme', randomTheme);
+  };
+
+  const resetToDefaults = () => {
+    if (confirm('Are you sure you want to reset all design settings to defaults? This cannot be undone.')) {
+      handleInputChange('theme', THEMES[0]);
+      handleInputChange('shape', 'rectangle');
+      handleInputChange('layout', LAYOUTS[0]);
+    }
+  };
+
   const addSocialLink = async (platform: string, username: string) => {
     if (!cardId) return;
 
@@ -263,11 +425,42 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     { id: 'media', label: 'Media', icon: Layout },
     { id: 'reviews', label: 'Reviews', icon: Eye },
     { id: 'design', label: 'Design', icon: Palette },
+    { id: 'advanced', label: 'Advanced', icon: Settings },
     { id: 'preview', label: 'Preview', icon: Eye },
   ];
 
   const renderBasicInfo = () => (
     <div className="space-y-6">
+      {/* Quick Actions */}
+      <div className="bg-blue-50 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-blue-900 mb-3">Quick Actions</h3>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={generateRandomTheme}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+          >
+            <Sparkles className="w-4 h-4" />
+            Random Theme
+          </button>
+          {existingCard && (
+            <button
+              onClick={handleDuplicateCard}
+              className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+            >
+              <Copy className="w-4 h-4" />
+              Duplicate Card
+            </button>
+          )}
+          <button
+            onClick={handleExportCard}
+            className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+          >
+            <Download className="w-4 h-4" />
+            Export Data
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-6">
           <div>
@@ -490,10 +683,31 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
 
   const renderDesign = () => (
     <div className="space-y-8">
+      {/* Design Tools */}
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-purple-900 mb-3">Design Tools</h3>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={generateRandomTheme}
+            className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+          >
+            <Zap className="w-4 h-4" />
+            Random Theme
+          </button>
+          <button
+            onClick={resetToDefaults}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Reset to Defaults
+          </button>
+        </div>
+      </div>
+
       {/* Theme Selection */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Choose Theme</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {THEMES.map((theme) => (
             <button
               key={theme.name}
@@ -544,7 +758,7 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
       {/* Layout Selection */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Layout Style</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {LAYOUTS.map((layout) => (
             <button
               key={layout.name}
@@ -566,6 +780,104 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     </div>
   );
 
+  const renderAdvanced = () => (
+    <div className="space-y-8">
+      {/* Import/Export */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Import/Export</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h4 className="font-medium text-gray-900 mb-2">Export Card Data</h4>
+            <p className="text-sm text-gray-600 mb-4">Download your card data as a JSON file for backup or transfer.</p>
+            <button
+              onClick={handleExportCard}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export Card Data
+            </button>
+          </div>
+          <div>
+            <h4 className="font-medium text-gray-900 mb-2">Import Card Data</h4>
+            <p className="text-sm text-gray-600 mb-4">Upload a previously exported card data file.</p>
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleImportCard}
+              className="hidden"
+              id="import-card"
+            />
+            <label
+              htmlFor="import-card"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+            >
+              <Upload className="w-4 h-4" />
+              Import Card Data
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Advanced Settings */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Advanced Settings</h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div>
+              <h4 className="font-medium text-gray-900">Auto-save</h4>
+              <p className="text-sm text-gray-600">Automatically save changes as you type</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {autoSaving && (
+                <div className="flex items-center gap-2 text-blue-600">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Saving...</span>
+                </div>
+              )}
+              <span className="text-sm text-green-600">Enabled</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div>
+              <h4 className="font-medium text-gray-900">Card Analytics</h4>
+              <p className="text-sm text-gray-600">Track views and interactions on your card</p>
+            </div>
+            <span className="text-sm text-green-600">Enabled</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      {existingCard && (
+        <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6">
+          <h3 className="text-lg font-semibold text-red-900 mb-4">Danger Zone</h3>
+          <div className="space-y-4">
+            <div className="p-4 border border-red-200 rounded-lg bg-red-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-medium text-red-600">Delete Card</h4>
+                  <p className="text-sm text-red-500">Permanently delete this card and all its data</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (confirm('Are you sure you want to delete this card? This action cannot be undone.')) {
+                      // Handle delete logic here
+                      onCancel();
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="max-w-7xl mx-auto">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -584,6 +896,12 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {autoSaving && (
+                    <div className="flex items-center gap-2 text-blue-600">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Auto-saving...</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     {formData.is_published ? (
                       <Lock className="w-4 h-4 text-green-600" />
@@ -650,6 +968,7 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
                 />
               )}
               {activeTab === 'design' && renderDesign()}
+              {activeTab === 'advanced' && renderAdvanced()}
               {activeTab === 'preview' && (
                 <CardPreview
                   formData={formData}
