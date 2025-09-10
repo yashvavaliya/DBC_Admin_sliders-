@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Eye, ArrowLeft, Palette, Type, Layout, Share2, Globe, Lock, AlertCircle, Upload, Download, Copy, Trash2, Plus, Settings, Zap, Sparkles, RefreshCw, FolderSync as Sync, Check } from 'lucide-react';
+import { Save, Eye, ArrowLeft, Palette, Type, Layout, Share2, Globe, Lock, AlertCircle, Upload, Download, Copy, Trash2, Plus, Settings, Zap, Sparkles, RefreshCw, FolderSync as Sync, Check, ArrowBigRight, Mail, Phone, MapPin, X, ExternalLink } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { ImageUpload } from './ImageUpload';
 import { CardPreview } from './CardPreview';
 import { MediaUpload } from './MediaUpload';
 import { ReviewsManager } from './ReviewsManager';
-import { generateSocialLink, SOCIAL_PLATFORMS, generateAutoSyncedLinks } from '../utils/socialUtils';
+import { generateSocialLink, SOCIAL_PLATFORMS, generateAutoSyncedLinks, getSocialIcon, SOCIAL_PLATFORM_COLORS } from '../utils/socialUtils';
 import { SuccessAnimation } from './SuccessAnimation';
 import type { Database } from '../lib/supabase';
 
@@ -67,34 +67,86 @@ const THEMES = [
   { name: 'Amber', primary: '#D97706', secondary: '#B45309', background: '#FFFFFF', text: '#1F2937' },
 ];
 
-const SHAPES = [
-  { id: 'rectangle', name: 'Rectangle', preview: 'rounded-lg' },
-  { id: 'rounded', name: 'Rounded', preview: 'rounded-2xl' },
-  { id: 'circle', name: 'Circle', preview: 'rounded-full aspect-square' },
-  { id: 'hexagon', name: 'Hexagon', preview: 'rounded-3xl' },
-];
+// Confetti Animation Component
+const ConfettiAnimation: React.FC = () => {
+  const [particles, setParticles] = useState<Array<{
+    id: number;
+    x: number;
+    y: number;
+    color: string;
+    size: number;
+    rotation: number;
+    velocity: { x: number; y: number };
+  }>>([]);
 
-const LAYOUTS = [
-  { style: 'modern', alignment: 'center', font: 'Inter', name: 'Modern Center' },
-  { style: 'modern', alignment: 'left', font: 'Inter', name: 'Modern Left' },
-  { style: 'classic', alignment: 'center', font: 'Georgia', name: 'Classic Center' },
-  { style: 'minimal', alignment: 'left', font: 'Helvetica', name: 'Minimal Left' },
-  { style: 'creative', alignment: 'center', font: 'Poppins', name: 'Creative Center' },
-  { style: 'elegant', alignment: 'right', font: 'Playfair Display', name: 'Elegant Right' },
-];
+  useEffect(() => {
+    const newParticles = Array.from({ length: 50 }, (_, i) => ({
+      id: i,
+      x: Math.random() * window.innerWidth,
+      y: -10,
+      color: ['#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6'][Math.floor(Math.random() * 5)],
+      size: Math.random() * 8 + 4,
+      rotation: Math.random() * 360,
+      velocity: {
+        x: (Math.random() - 0.5) * 4,
+        y: Math.random() * 3 + 2
+      }
+    }));
+    setParticles(newParticles);
+
+    const timer = setTimeout(() => {
+      setParticles([]);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {particles.map((particle) => (
+        <div
+          key={particle.id}
+          className="absolute"
+          style={{
+            left: `${particle.x}px`,
+            top: `${particle.y}px`,
+            backgroundColor: particle.color,
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+            borderRadius: '50%',
+            transform: `rotate(${particle.rotation}deg)`,
+            animation: `fall 3s ease-out forwards, rotate 3s linear infinite`,
+          }}
+        />
+      ))}
+      <style jsx>{`
+        @keyframes fall {
+          to {
+            transform: translateY(100vh) rotate(720deg);
+            opacity: 0;
+          }
+        }
+        @keyframes rotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+};
 
 export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, onCancel }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'basic' | 'contact' | 'social' | 'media' | 'reviews' | 'design' | 'preview'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'contact' | 'social' | 'media' | 'reviews' | 'design'>('basic');
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
   const [mediaItems, setMediaItems] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
-  const [cardId, setCardId] = useState<string | null>(existingCard?.id || null);
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
-  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [businessCard, setBusinessCard] = useState<BusinessCard | null>(existingCard || null);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showCongrats, setShowCongrats] = useState(false);
+  const [newSocialLink, setNewSocialLink] = useState({ platform: '', username: '' });
 
   const [formData, setFormData] = useState<FormData>({
     title: existingCard?.title || '',
@@ -112,7 +164,7 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     map_link: existingCard?.map_link || '',
     theme: (existingCard?.theme as any) || THEMES[0],
     shape: existingCard?.shape || 'rectangle',
-    layout: (existingCard?.layout as any) || LAYOUTS[0],
+    layout: (existingCard?.layout as any) || { style: 'modern', alignment: 'center', font: 'Inter' },
     is_published: existingCard?.is_published || false,
   });
 
@@ -122,16 +174,15 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     }
   }, [existingCard]);
 
-  // Auto-save functionality
   useEffect(() => {
-    if (!cardId || !user) return;
-    
-    const autoSaveTimer = setTimeout(() => {
-      handleAutoSave();
-    }, 3000); // Auto-save after 3 seconds of inactivity
-    
-    return () => clearTimeout(autoSaveTimer);
-  }, [formData, cardId, user]);
+    if (showCongrats) {
+      const timer = setTimeout(() => {
+        setShowCongrats(false);
+        setShowConfetti(false);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [showCongrats]);
 
   const loadCardData = async () => {
     if (!existingCard) return;
@@ -149,49 +200,6 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
       }
     } catch (error) {
       console.error('Error loading card data:', error);
-    }
-  };
-
-  const handleInputChange = (field: keyof FormData, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const handleAutoSave = async () => {
-    if (!user || !cardId || saving) return;
-    
-    setAutoSaving(true);
-    try {
-      const cardData = {
-        user_id: user.id,
-        title: formData.title,
-        company: formData.company,
-        position: formData.profession,
-        phone: formData.phone,
-        email: formData.email,
-        website: formData.website,
-        avatar_url: formData.avatar_url,
-        bio: formData.tagline,
-        whatsapp: formData.whatsapp,
-        address: formData.address,
-        map_link: formData.map_link,
-        theme: formData.theme,
-        shape: formData.shape,
-        layout: formData.layout,
-        is_published: formData.is_published,
-        slug: formData.username || null,
-      };
-
-      await supabase
-        .from('business_cards')
-        .update(cardData)
-        .eq('id', cardId);
-    } catch (error) {
-      console.error('Auto-save error:', error);
-    } finally {
-      setAutoSaving(false);
     }
   };
 
@@ -245,17 +253,10 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
       }
 
       if (result.data) {
-        setCardId(result.data.id);
+        setBusinessCard(result.data);
       }
 
-      // Show success animation
-      setShowSuccessAnimation(true);
-      
-      // Hide animation after 3 seconds and call onSave
-      setTimeout(() => {
-        setShowSuccessAnimation(false);
-        onSave();
-      }, 3000);
+      return result.data;
     } catch (error) {
       console.error('Error saving card:', error);
       alert('Failed to save card. Please try again.');
@@ -264,115 +265,22 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     }
   };
 
-  const handleDuplicateCard = async () => {
-    if (!user || !existingCard) return;
-    
-    setSaving(true);
-    try {
-      const { id, created_at, updated_at, slug, ...cardData } = existingCard;
-      
-      const newCardData = {
-        ...cardData,
-        title: `${formData.title} (Copy)`,
-        is_published: false,
-        view_count: 0,
-        slug: null // Let the system generate a new slug
-      };
-      
-      const { data, error } = await supabase
-        .from('business_cards')
-        .insert(newCardData)
-        .select()
-        .single();
-        
-      if (error) {
-        console.error('Error duplicating card:', error);
-        alert('Failed to duplicate card. Please try again.');
-        return;
-      }
-      
-      // Redirect to edit the new card
-      window.location.href = `/admin?edit=${data.id}`;
-    } catch (error) {
-      console.error('Error duplicating card:', error);
-      alert('Failed to duplicate card. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleExportCard = () => {
-    const cardData = {
-      ...formData,
-      socialLinks,
-      mediaItems,
-      reviews,
-      exportedAt: new Date().toISOString()
-    };
-    
-    const dataStr = JSON.stringify(cardData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${formData.username || 'business-card'}-export.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImportCard = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importedData = JSON.parse(e.target?.result as string);
-        
-        // Update form data with imported data
-        setFormData({
-          ...formData,
-          ...importedData,
-          username: importedData.username + '-imported' // Avoid slug conflicts
-        });
-        
-        if (importedData.socialLinks) {
-          setSocialLinks(importedData.socialLinks);
-        }
-        
-        alert('Card data imported successfully!');
-      } catch (error) {
-        alert('Invalid card data file. Please check the format.');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const generateRandomTheme = () => {
-    const randomTheme = THEMES[Math.floor(Math.random() * THEMES.length)];
-    handleInputChange('theme', randomTheme);
-  };
-
-  const resetToDefaults = () => {
-    if (confirm('Are you sure you want to reset all design settings to defaults? This cannot be undone.')) {
-      handleInputChange('theme', THEMES[0]);
-      handleInputChange('shape', 'rectangle');
-      handleInputChange('layout', LAYOUTS[0]);
-    }
+  const handleGlobalUsernameChange = (username: string) => {
+    setFormData({ ...formData, globalUsername: username });
   };
 
   const handleAutoSyncSocialLinks = async () => {
-    if (!cardId || !formData.username) return;
+    if (!businessCard || !formData.globalUsername) return;
 
     try {
       // Generate auto-synced links
-      const autoSyncedLinks = generateAutoSyncedLinks(formData.username);
+      const autoSyncedLinks = generateAutoSyncedLinks(formData.globalUsername);
       
       // Remove existing auto-synced links
       await supabase
         .from('social_links')
         .delete()
-        .eq('card_id', cardId)
+        .eq('card_id', businessCard.id)
         .eq('is_auto_synced', true);
 
       // Insert new auto-synced links
@@ -380,7 +288,7 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
         .from('social_links')
         .insert(
           autoSyncedLinks.map((link, index) => ({
-            card_id: cardId,
+            card_id: businessCard.id,
             platform: link.platform,
             username: link.username,
             url: link.url,
@@ -400,7 +308,6 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
       // Update local state
       const newLinks = [...socialLinks, ...(data || [])];
       setSocialLinks(newLinks);
-      setAutoSyncEnabled(true);
       
       alert('Social links auto-synced successfully!');
     } catch (error) {
@@ -409,50 +316,17 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     }
   };
 
-  const handleUpdateSocialLink = async (linkId: string, newUsername: string) => {
-    try {
-      const link = socialLinks.find(l => l.id === linkId);
-      if (!link) return;
-
-      const newUrl = generateSocialLink(link.platform, newUsername);
-      
-      const { error } = await supabase
-        .from('social_links')
-        .update({ 
-          username: newUsername, 
-          url: newUrl,
-          is_auto_synced: false // Mark as custom when manually edited
-        })
-        .eq('id', linkId);
-
-      if (error) {
-        console.error('Error updating social link:', error);
-        return;
-      }
-
-      // Update local state
-      const updatedLinks = socialLinks.map(l =>
-        l.id === linkId 
-          ? { ...l, username: newUsername, url: newUrl, is_auto_synced: false }
-          : l
-      );
-      setSocialLinks(updatedLinks);
-    } catch (error) {
-      console.error('Error updating social link:', error);
-    }
-  };
-
-  const addSocialLink = async (platform: string, username: string) => {
-    if (!cardId) return;
+  const handleAddSocialLink = async () => {
+    if (!businessCard || !newSocialLink.platform || !newSocialLink.username) return;
 
     try {
-      const url = generateSocialLink(platform, username);
+      const url = generateSocialLink(newSocialLink.platform, newSocialLink.username);
       const { data, error } = await supabase
         .from('social_links')
         .insert({
-          card_id: cardId,
-          platform,
-          username,
+          card_id: businessCard.id,
+          platform: newSocialLink.platform,
+          username: newSocialLink.username,
           url,
           display_order: socialLinks.length,
           is_active: true,
@@ -467,12 +341,45 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
       }
 
       setSocialLinks([...socialLinks, data]);
+      setNewSocialLink({ platform: '', username: '' });
     } catch (error) {
       console.error('Error adding social link:', error);
     }
   };
 
-  const removeSocialLink = async (linkId: string) => {
+  const handleSocialLinkEdit = async (linkId: string, newUsername: string) => {
+    try {
+      const link = socialLinks.find(l => l.id === linkId);
+      if (!link) return;
+
+      const newUrl = generateSocialLink(link.platform, newUsername);
+      
+      const { error } = await supabase
+        .from('social_links')
+        .update({ 
+          username: newUsername, 
+          url: newUrl,
+          is_auto_synced: false
+        })
+        .eq('id', linkId);
+
+      if (error) {
+        console.error('Error updating social link:', error);
+        return;
+      }
+
+      const updatedLinks = socialLinks.map(l =>
+        l.id === linkId 
+          ? { ...l, username: newUsername, url: newUrl, is_auto_synced: false }
+          : l
+      );
+      setSocialLinks(updatedLinks);
+    } catch (error) {
+      console.error('Error updating social link:', error);
+    }
+  };
+
+  const handleRemoveSocialLink = async (linkId: string) => {
     try {
       const { error } = await supabase
         .from('social_links')
@@ -497,571 +404,15 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
     { id: 'media', label: 'Media', icon: Layout },
     { id: 'reviews', label: 'Reviews', icon: Eye },
     { id: 'design', label: 'Design', icon: Palette },
-    { id: 'advanced', label: 'Advanced', icon: Settings },
-    { id: 'preview', label: 'Preview', icon: Eye },
   ];
 
-  const renderBasicInfo = () => (
-    <div className="space-y-6">
-      {/* Quick Actions */}
-      <div className="bg-blue-50 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-blue-900 mb-3">Quick Actions</h3>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={generateRandomTheme}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-          >
-            <Sparkles className="w-4 h-4" />
-            Random Theme
-          </button>
-          {existingCard && (
-            <button
-              onClick={handleDuplicateCard}
-              className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-            >
-              <Copy className="w-4 h-4" />
-              Duplicate Card
-            </button>
-          )}
-          <button
-            onClick={handleExportCard}
-            className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-          >
-            <Download className="w-4 h-4" />
-            Export Data
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name *
-            </label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) => handleInputChange('title', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter your full name"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Card Username *
-            </label>
-            <div className="flex">
-              <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
-                /c/
-              </span>
-              <input
-                type="text"
-                value={formData.username}
-                onChange={(e) => handleInputChange('username', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="your-username"
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              This will be your card's URL: /c/{formData.username || 'your-username'}
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Company
-            </label>
-            <input
-              type="text"
-              value={formData.company}
-              onChange={(e) => handleInputChange('company', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Your company name"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Job Title/Profession
-            </label>
-            <input
-              type="text"
-              value={formData.profession}
-              onChange={(e) => handleInputChange('profession', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Your job title or profession"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Bio/Tagline
-            </label>
-            <textarea
-              value={formData.tagline}
-              onChange={(e) => handleInputChange('tagline', e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Brief description about yourself or your business"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Profile Picture
-          </label>
-          <ImageUpload
-            currentImageUrl={formData.avatar_url}
-            onImageChange={(url) => handleInputChange('avatar_url', url || '')}
-            userId={user?.id || ''}
-          />
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderContactInfo = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Email Address
-          </label>
-          <input
-            type="email"
-            value={formData.email}
-            onChange={(e) => handleInputChange('email', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="your@email.com"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Phone Number
-          </label>
-          <input
-            type="tel"
-            value={formData.phone}
-            onChange={(e) => handleInputChange('phone', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="+1 (555) 123-4567"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            WhatsApp Number
-          </label>
-          <input
-            type="tel"
-            value={formData.whatsapp}
-            onChange={(e) => handleInputChange('whatsapp', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="+1 (555) 123-4567"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Website
-          </label>
-          <input
-            type="url"
-            value={formData.website}
-            onChange={(e) => handleInputChange('website', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="https://yourwebsite.com"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Address
-        </label>
-        <textarea
-          value={formData.address}
-          onChange={(e) => handleInputChange('address', e.target.value)}
-          rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Your business or home address"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Google Maps Link (Optional)
-        </label>
-        <input
-          type="url"
-          value={formData.map_link}
-          onChange={(e) => handleInputChange('map_link', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="https://maps.google.com/..."
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Link to your location on Google Maps for easy navigation
-        </p>
-      </div>
-    </div>
-  );
-
-  const renderSocialLinks = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Social Media Links</h3>
-        
-        {/* Auto-Sync Section */}
-        {formData.username && (
-          <div className="bg-blue-50 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h4 className="font-medium text-blue-900">Auto-Sync Social Links</h4>
-                <p className="text-sm text-blue-700">
-                  Automatically create social links using your card username: <strong>@{formData.username}</strong>
-                </p>
-              </div>
-              <button
-                onClick={handleAutoSyncSocialLinks}
-                disabled={!cardId}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Sync className="w-4 h-4" />
-                Auto-Sync Links
-              </button>
-            </div>
-            <div className="text-xs text-blue-600">
-              This will create links for: Instagram, LinkedIn, GitHub, Twitter, YouTube, Facebook, and more
-            </div>
-          </div>
-        )}
-
-        {/* Add Social Link Form */}
-        <div className="bg-gray-50 rounded-lg p-4 mb-6">
-          <SocialLinkForm onAdd={addSocialLink} />
-        </div>
-
-        {/* Existing Social Links */}
-        <div className="space-y-3">
-          {socialLinks.map((link) => (
-            <div key={link.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  link.is_auto_synced ? 'bg-green-100' : 'bg-blue-100'
-                }`}>
-                  <Share2 className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-gray-900">{link.platform}</p>
-                    {link.is_auto_synced && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
-                        <Sync className="w-3 h-3" />
-                        Auto-synced
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-gray-400">@</span>
-                    <input
-                      type="text"
-                      value={link.username || ''}
-                      onChange={(e) => handleUpdateSocialLink(link.id, e.target.value)}
-                      className="text-sm text-gray-600 bg-transparent border-none p-0 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1"
-                      placeholder="username"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  title="Open link"
-                >
-                  <Globe className="w-4 h-4" />
-                </a>
-                <button
-                  onClick={() => removeSocialLink(link.id)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Remove link"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {socialLinks.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <Share2 className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p className="mb-2">No social links added yet</p>
-            {formData.username && (
-              <p className="text-sm text-blue-600">
-                Try the Auto-Sync feature above to quickly add links for @{formData.username}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderDesign = () => (
-    <div className="space-y-8">
-      {/* Design Tools */}
-      <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-purple-900 mb-3">Design Tools</h3>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={generateRandomTheme}
-            className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-          >
-            <Zap className="w-4 h-4" />
-            Random Theme
-          </button>
-          <button
-            onClick={resetToDefaults}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Reset to Defaults
-          </button>
-        </div>
-      </div>
-
-      {/* Theme Selection */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Choose Theme</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {THEMES.map((theme) => (
-            <button
-              key={theme.name}
-              onClick={() => handleInputChange('theme', theme)}
-              className={`p-4 rounded-lg border-2 transition-all ${
-                formData.theme.name === theme.name
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <div
-                  className="w-4 h-4 rounded-full"
-                  style={{ backgroundColor: theme.primary }}
-                />
-                <div
-                  className="w-4 h-4 rounded-full"
-                  style={{ backgroundColor: theme.secondary }}
-                />
-              </div>
-              <p className="text-sm font-medium text-gray-900">{theme.name}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Shape Selection */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Card Shape</h3>
-        <div className="grid grid-cols-3 gap-4">
-          {SHAPES.map((shape) => (
-            <button
-              key={shape.id}
-              onClick={() => handleInputChange('shape', shape.id)}
-              className={`p-4 rounded-lg border-2 transition-all ${
-                formData.shape === shape.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className={`w-16 h-10 bg-gray-300 mx-auto mb-2 ${shape.preview}`} />
-              <p className="text-sm font-medium text-gray-900">{shape.name}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Layout Selection */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Layout Style</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {LAYOUTS.map((layout) => (
-            <button
-              key={layout.name}
-              onClick={() => handleInputChange('layout', layout)}
-              className={`p-4 rounded-lg border-2 text-left transition-all ${
-                formData.layout.name === layout.name
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <p className="font-medium text-gray-900">{layout.name}</p>
-              <p className="text-sm text-gray-500">
-                {layout.style} • {layout.alignment} • {layout.font}
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderAdvanced = () => (
-    <div className="space-y-8">
-      {/* Import/Export */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Import/Export</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h4 className="font-medium text-gray-900 mb-2">Export Card Data</h4>
-            <p className="text-sm text-gray-600 mb-4">Download your card data as a JSON file for backup or transfer.</p>
-            <button
-              onClick={handleExportCard}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Export Card Data
-            </button>
-          </div>
-          <div>
-            <h4 className="font-medium text-gray-900 mb-2">Import Card Data</h4>
-            <p className="text-sm text-gray-600 mb-4">Upload a previously exported card data file.</p>
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleImportCard}
-              className="hidden"
-              id="import-card"
-            />
-            <label
-              htmlFor="import-card"
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
-            >
-              <Upload className="w-4 h-4" />
-              Import Card Data
-            </label>
-          </div>
-        </div>
-      </div>
-
-      {/* Advanced Settings */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Advanced Settings</h3>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-            <div>
-              <h4 className="font-medium text-gray-900">Auto-save</h4>
-              <p className="text-sm text-gray-600">Automatically save changes as you type</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {autoSaving && (
-                <div className="flex items-center gap-2 text-blue-600">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Saving...</span>
-                </div>
-              )}
-              <span className="text-sm text-green-600">Enabled</span>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-            <div>
-              <h4 className="font-medium text-gray-900">Card Analytics</h4>
-              <p className="text-sm text-gray-600">Track views and interactions on your card</p>
-            </div>
-            <span className="text-sm text-green-600">Enabled</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Danger Zone */}
-      {existingCard && (
-        <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6">
-          <h3 className="text-lg font-semibold text-red-900 mb-4">Danger Zone</h3>
-          <div className="space-y-4">
-            <div className="p-4 border border-red-200 rounded-lg bg-red-50">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium text-red-600">Delete Card</h4>
-                  <p className="text-sm text-red-500">Permanently delete this card and all its data</p>
-                </div>
-                <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to delete this card? This action cannot be undone.')) {
-                      // Handle delete logic here
-                      onCancel();
-                    }
-                  }}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
   return (
-    <>
-      {/* Success Animation Overlay */}
-      {showSuccessAnimation && <SuccessAnimation />}
-      
     <div className="max-w-7xl mx-auto">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Editor Panel */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            {/* Header */}
-            <div className="border-b border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {existingCard ? 'Edit Business Card' : 'Create New Business Card'}
-                  </h2>
-                  <p className="text-gray-600">
-                    {existingCard ? 'Update your card information' : 'Fill in your details to create your digital business card'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {autoSaving && (
-                    <div className="flex items-center gap-2 text-blue-600">
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">Auto-saving...</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    {formData.is_published ? (
-                      <Lock className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <Globe className="w-4 h-4 text-gray-400" />
-                    )}
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.is_published}
-                        onChange={(e) => handleInputChange('is_published', e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        {formData.is_published ? 'Published' : 'Draft'}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tabs */}
+        {/* Left Column - Form */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Tab Navigation */}
             <div className="border-b border-gray-200">
               <nav className="flex overflow-x-auto">
                 {tabs.map((tab) => {
@@ -1070,10 +421,10 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
-                      className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                      className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors ${
                         activeTab === tab.id
-                          ? 'border-blue-500 text-blue-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                          ? "text-blue-600 bg-blue-50 border-b-2 border-blue-600"
+                          : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                       }`}
                     >
                       <Icon className="w-4 h-4" />
@@ -1086,74 +437,790 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
 
             {/* Tab Content */}
             <div className="p-6">
-              {activeTab === 'basic' && renderBasicInfo()}
-              {activeTab === 'contact' && renderContactInfo()}
-              {activeTab === 'social' && renderSocialLinks()}
-              {activeTab === 'media' && cardId && (
-                <MediaUpload
-                  cardId={cardId}
-                  mediaItems={mediaItems}
-                  onMediaChange={setMediaItems}
-                  userId={user?.id || ''}
-                />
-              )}
-              {activeTab === 'reviews' && cardId && (
-                <ReviewsManager
-                  cardId={cardId}
-                  reviews={reviews}
-                  onReviewsChange={setReviews}
-                />
-              )}
-              {activeTab === 'design' && renderDesign()}
-              {activeTab === 'advanced' && renderAdvanced()}
-              {activeTab === 'preview' && (
-                <CardPreview
-                  formData={formData}
-                  socialLinks={socialLinks}
-                  mediaItems={mediaItems}
-                  reviews={reviews}
-                  isFullPage={true}
-                />
-              )}
-            </div>
+              {/* Basic Info Tab */}
+              {activeTab === "basic" && (
+                <div className="space-y-6 relative">
+                  <div className="flex flex-col sm:flex-row items-center gap-1">
+                    <div className="flex-shrink-0 flex justify-center items-center w-full sm:w-auto mb-4 sm:mb-0">
+                      <ImageUpload
+                        currentImageUrl={formData.avatar_url}
+                        onImageChange={(url) =>
+                          setFormData({ ...formData, avatar_url: url || "" })
+                        }
+                        userId={user?.id || ""}
+                        className="mx-auto"
+                      />
+                    </div>
+                    <div className="flex-1 w-full sm:w-auto space-y-4">
+                      <div className="w-full">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Full Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.title}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              title: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Your full name"
+                        />
+                      </div>
+                      <div className="w-full">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Card URL Username *
+                        </label>
+                        <div className="flex">
+                          <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                            /c/
+                          </span>
+                          <input
+                            type="text"
+                            value={formData.username}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                username: e.target.value
+                                  .toLowerCase()
+                                  .replace(/[^a-z0-9]/g, ""),
+                              })
+                            }
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="yourname"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          This will be your card's URL: /c/
+                          {formData.username || "yourname"}
+                        </p>
+                      </div>
+                      <div className="w-full">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Global Username (for social links)
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.globalUsername}
+                          onChange={(e) =>
+                            handleGlobalUsernameChange(
+                              e.target.value
+                                .toLowerCase()
+                                .replace(/[^a-z0-9_]/g, "")
+                            )
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Add common username"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          This username will auto-sync across all your social
+                          media platforms
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Actions */}
-            <div className="border-t border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={onCancel}
-                  className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Cancel
-                </button>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setActiveTab('preview')}
-                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Preview
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving || !formData.title || !formData.username}
-                    className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {saving ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )}
-                    {saving ? 'Saving...' : 'Save Card'}
-                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company/Organization
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.company}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            company: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Your company name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Job Title/Profession
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.profession}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            profession: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Your job title"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Tagline/Bio
+                    </label>
+                    <textarea
+                      value={formData.tagline}
+                      onChange={(e) =>
+                        setFormData({ ...formData, tagline: e.target.value })
+                      }
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="A brief description about yourself or your business"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 justify-between">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="is_published"
+                        checked={formData.is_published}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            is_published: e.target.checked,
+                          })
+                        }
+                        className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span
+                        className={`inline-block w-3 h-3 rounded-full ${
+                          formData.is_published
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                        }`}
+                      />
+                      <label
+                        htmlFor="is_published"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Publish card (make it publicly accessible)
+                      </label>
+                    </div>
+                  </div>
+                  {/* Next button moved to bottom right */}
+                  <div className="flex justify-end mt-10">
+                    <button
+                      type="button"
+                      className="px-10 py-2 flex items-center gap-2 bg-yellow-50 text-yellow-500 rounded-lg font-medium hover:bg-yellow-500 hover:text-white transition-colors text-sm border-2 border-yellow-500"
+                      onClick={async () => {
+                        const savedCard = await handleSave();
+                        if (savedCard) {
+                          setBusinessCard(savedCard);
+                          setActiveTab("contact");
+                        }
+                      }}
+                    >
+                      Next
+                      <ArrowBigRight className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Contact Tab */}
+              {activeTab === "contact" && (
+                <div className="space-y-4 relative">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Mail className="w-4 h-4 inline mr-1" />
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) =>
+                          setFormData({ ...formData, email: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="your@email.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Phone className="w-4 h-4 inline mr-1" />
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) =>
+                          setFormData({ ...formData, phone: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="+1 (555) 123-4567"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Globe className="w-4 h-4 inline mr-1" />
+                        Website
+                      </label>
+                      <input
+                        type="url"
+                        value={formData.website}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            website: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="https://yourwebsite.com"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <MapPin className="w-4 h-4 inline mr-1" />
+                      Address
+                    </label>
+                    <textarea
+                      value={formData.address}
+                      onChange={(e) =>
+                        setFormData({ ...formData, address: e.target.value })
+                      }
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Your business address"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Google Maps Link
+                      </label>
+                      <input
+                        type="url"
+                        value={formData.map_link}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            map_link: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="https://maps.google.com/..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end mt-10">
+                    <button
+                      type="button"
+                      className="px-10 py-2 flex items-center gap-2 bg-yellow-50 text-yellow-500 rounded-lg font-medium hover:bg-yellow-500 hover:text-white transition-colors text-sm border-2 border-yellow-500"
+                      onClick={async () => {
+                        await handleSave();
+                        setActiveTab("social");
+                      }}
+                    >
+                      Next
+                      <ArrowBigRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Social Links Tab */}
+              {activeTab === "social" && (
+                <div className="space-y-6 relative">
+                  {/* Global Username Info */}
+                  {formData.globalUsername && (
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-medium text-blue-900">
+                            Global Username: @{formData.globalUsername}
+                          </h4>
+                          <p className="text-sm text-blue-700">
+                            Auto-synced links will use this username
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleAutoSyncSocialLinks}
+                          className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                          Auto-Sync All Platforms
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add New Social Link */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-medium text-gray-900 mb-4">
+                      Add Social Link
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Platform
+                        </label>
+                        <select
+                          value={newSocialLink.platform}
+                          onChange={(e) =>
+                            setNewSocialLink({
+                              ...newSocialLink,
+                              platform: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">Select platform</option>
+                          {Object.keys(SOCIAL_PLATFORMS).map((platform) => (
+                            <option key={platform} value={platform}>
+                              {platform}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Username/Handle
+                        </label>
+                        <div className="flex">
+                          <input
+                            type="text"
+                            value={newSocialLink.username}
+                            onChange={(e) =>
+                              setNewSocialLink({
+                                ...newSocialLink,
+                                username: e.target.value,
+                              })
+                            }
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder={
+                              newSocialLink.platform &&
+                              SOCIAL_PLATFORMS[newSocialLink.platform]
+                                ? SOCIAL_PLATFORMS[newSocialLink.platform]
+                                    .placeholder
+                                : "username"
+                            }
+                          />
+                          <button
+                            onClick={handleAddSocialLink}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 transition-colors"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Existing Social Links */}
+                  <div className="space-y-3">
+                    {socialLinks.map((link) => (
+                      <div
+                        key={link.id}
+                        className={`flex items-center justify-between p-4 bg-white border rounded-lg ${
+                          link.is_auto_synced
+                            ? "border-blue-200 bg-blue-50"
+                            : "border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 flex items-center justify-center rounded-lg border-2 ${link.platform === "GitHub" ? "bg-gray-200" : ""}`} style={{ background: SOCIAL_PLATFORM_COLORS[link.platform] + '22', borderColor: SOCIAL_PLATFORM_COLORS[link.platform] + '55' }}>
+                            {(() => {
+                              const Icon = getSocialIcon(link.platform);
+                              const color = SOCIAL_PLATFORM_COLORS[link.platform] || '#333';
+                              return <Icon className="w-5 h-5" color={color} />;
+                            })()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">
+                                {link.platform}
+                              </span>
+                              {link.is_auto_synced && (
+                                <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                                  Auto-synced
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <input
+                                type="text"
+                                value={link.username || ""}
+                                onChange={(e) =>
+                                  handleSocialLinkEdit(
+                                    link.id,
+                                    e.target.value
+                                  )
+                                }
+                                className="text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="username"
+                              />
+                              <a
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 text-sm"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveSocialLink(link.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {socialLinks.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <Share2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                      <p>No social links added yet.</p>
+                      <p className="text-sm mb-4">
+                        Add your social media profiles to connect with
+                        visitors.
+                      </p>
+                      {formData.globalUsername && (
+                        <button
+                          onClick={handleAutoSyncSocialLinks}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          Auto-Sync with @{formData.globalUsername}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex justify-end mt-10">
+                    <button
+                      type="button"
+                      className="px-10 py-2 flex items-center gap-2 bg-yellow-50 text-yellow-500 rounded-lg font-medium hover:bg-yellow-500 hover:text-white transition-colors text-sm border-2 border-yellow-500"
+                      onClick={async () => {
+                        await handleSave();
+                        setActiveTab("media");
+                      }}
+                    >
+                      Next
+                      <ArrowBigRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Media Tab */}
+              {activeTab === "media" && businessCard && (
+                <div className="relative">
+                  <MediaUpload
+                    cardId={businessCard.id}
+                    mediaItems={mediaItems}
+                    onMediaChange={setMediaItems}
+                    userId={user?.id || ""}
+                  />
+                  <div className="flex justify-end mt-10">
+                    <button
+                      type="button"
+                      className="px-10 py-2 flex items-center gap-2 bg-yellow-50 text-yellow-500 rounded-lg font-medium hover:bg-yellow-500 hover:text-white transition-colors text-sm border-2 border-yellow-500"
+                      onClick={async () => {
+                        await handleSave();
+                        setActiveTab("reviews");
+                      }}
+                    >
+                      Next
+                      <ArrowBigRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Reviews Tab */}
+              {activeTab === "reviews" && businessCard && (
+                <div className="relative">
+                  <ReviewsManager
+                    cardId={businessCard.id}
+                    reviews={reviews}
+                    onReviewsChange={setReviews}
+                  />
+                  <div className="flex justify-end mt-10">
+                    <button
+                      type="button"
+                      className="px-10 py-2 flex items-center gap-2 bg-yellow-50 text-yellow-500 rounded-lg font-medium hover:bg-yellow-500 hover:text-white transition-colors text-sm border-2 border-yellow-500"
+                      onClick={async () => {
+                        await handleSave();
+                        setActiveTab("design");
+                      }}
+                    >
+                      Next
+                      <ArrowBigRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Design Tab */}
+              {activeTab === "design" && (
+                <div className="space-y-6 flex flex-col relative min-h-[60vh]">
+                  {/* Confetti Canvas - overlay, does not affect layout */}
+                  {showConfetti && (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none' }}>
+                      <ConfettiAnimation />
+                    </div>
+                  )}
+                  {/* Congratulatory Message */}
+                  {showCongrats && (
+                    <div 
+                      className="fixed top-1/2 left-1/2 z-50 bg-white bg-opacity-95 rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center justify-center animate-congrats-fade-in"
+                      style={{ transform: 'translate(-50%, -50%)', minWidth: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}
+                    >
+                      <span className="text-6xl mb-3 animate-bounce-emoji" style={{ display: 'inline-block' }}>🎉</span>
+                      <span className="text-2xl font-extrabold text-gradient bg-gradient-to-r from-pink-500 via-blue-500 to-green-400 bg-clip-text text-transparent mb-2 animate-congrats-scale">Congratulations!</span>
+                      <span className="text-lg text-gray-700 font-medium animate-congrats-fade">You successfully built your card.</span>
+                      <style>{`
+                        @keyframes congrats-fade-in {
+                          0% { opacity: 0; transform: scale(0.8) translate(-50%, -50%); }
+                          60% { opacity: 1; transform: scale(1.05) translate(-50%, -50%); }
+                          100% { opacity: 1; transform: scale(1) translate(-50%, -50%); }
+                        }
+                        .animate-congrats-fade-in {
+                          animation: congrats-fade-in 0.8s cubic-bezier(.23,1.02,.53,.97);
+                        }
+                        @keyframes bounce-emoji {
+                          0%, 100% { transform: translateY(0); }
+                          20% { transform: translateY(-18px); }
+                          40% { transform: translateY(0); }
+                          60% { transform: translateY(-10px); }
+                          80% { transform: translateY(0); }
+                        }
+                        .animate-bounce-emoji {
+                          animation: bounce-emoji 1.2s;
+                        }
+                        @keyframes congrats-scale {
+                          0% { opacity: 0; transform: scale(0.7); }
+                          60% { opacity: 1; transform: scale(1.1); }
+                          100% { opacity: 1; transform: scale(1); }
+                        }
+                        .animate-congrats-scale {
+                          animation: congrats-scale 0.7s cubic-bezier(.23,1.02,.53,.97);
+                        }
+                        @keyframes congrats-fade {
+                          0% { opacity: 0; }
+                          100% { opacity: 1; }
+                        }
+                        .animate-congrats-fade {
+                          animation: congrats-fade 1.2s;
+                        }
+                      `}</style>
+                    </div>
+                  )}
+                  {/* Theme Selection */}
+                  <div className="w-full max-w-2xl mx-auto">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Choose Theme
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {THEMES.map((theme) => (
+                        <button
+                          key={theme.name}
+                          onClick={() => setFormData({ ...formData, theme })}
+                          className={`p-4 rounded-lg border-2 transition-all flex items-center justify-between w-full ${
+                            formData.theme.name === theme.name
+                              ? "border-blue-500 ring-2 ring-blue-200"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-7 h-6 rounded-full"
+                              style={{ backgroundColor: theme.primary }}
+                            />
+                            <div
+                              className="w-7 h-6 rounded-full"
+                              style={{ backgroundColor: theme.secondary }}
+                            />
+                          </div>
+                          <div className="text-sm font-medium text-gray-900 ml-4 text-right">
+                            {theme.name}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Card Shape */}
+                  <div className="w-full max-w-2xl mx-auto">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Card Shape
+                    </h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      {[
+                        { value: "rectangle", label: "Rectangle" },
+                        { value: "rounded", label: "Rounded" },
+                        { value: "circle", label: "Circle" },
+                      ].map((shape) => (
+                        <button
+                          key={shape.value}
+                          onClick={() =>
+                            setFormData({ ...formData, shape: shape.value })
+                          }
+                          className={`p-4 rounded-lg border-2 transition-all ${
+                            formData.shape === shape.value
+                              ? "border-blue-500 ring-2 ring-blue-200"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="text-sm font-medium text-gray-900">
+                            {shape.label}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Layout Options */}
+                  <div className="w-full max-w-2xl mx-auto">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Layout Style
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {[
+                        { value: "modern", label: "Modern" },
+                        { value: "classic", label: "Classic" },
+                        { value: "minimal", label: "Minimal" },
+                        { value: "creative", label: "Creative" },
+                      ].map((style) => (
+                        <button
+                          key={style.value}
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              layout: {
+                                ...formData.layout,
+                                style: style.value,
+                              },
+                            })
+                          }
+                          className={`p-4 rounded-lg border-2 transition-all ${
+                            formData.layout.style === style.value
+                              ? "border-blue-500 ring-2 ring-blue-200"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="text-sm font-medium text-gray-900">
+                            {style.label}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Text Alignment */}
+                  <div className="w-full max-w-2xl mx-auto">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Text Alignment
+                    </h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      {[
+                        { value: "left", label: "Left" },
+                        { value: "center", label: "Center" },
+                        { value: "right", label: "Right" },
+                      ].map((alignment) => (
+                        <button
+                          key={alignment.value}
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              layout: {
+                                ...formData.layout,
+                                alignment: alignment.value,
+                              },
+                            })
+                          }
+                          className={`p-4 rounded-lg border-2 transition-all ${
+                            formData.layout.alignment === alignment.value
+                              ? "border-blue-500 ring-2 ring-blue-200"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="text-sm font-medium text-gray-900">
+                            {alignment.label}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Font Selection */}
+                  <div className="w-full max-w-2xl mx-auto">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Font Family
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {[
+                        { value: "Inter", label: "Inter" },
+                        { value: "Roboto", label: "Roboto" },
+                        { value: "Open Sans", label: "Open Sans" },
+                        { value: "Lato", label: "Lato" },
+                        { value: "Montserrat", label: "Montserrat" },
+                        { value: "Poppins", label: "Poppins" },
+                      ].map((font) => (
+                        <button
+                          key={font.value}
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              layout: {
+                                ...formData.layout,
+                                font: font.value,
+                              },
+                            })
+                          }
+                          className={`p-4 rounded-lg border-2 transition-all ${
+                            formData.layout.font === font.value
+                              ? "border-blue-500 ring-2 ring-blue-200"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                          style={{ fontFamily: font.value }}
+                        >
+                          <div className="text-sm font-medium text-gray-900">
+                            {font.label}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex justify-end mt-10">
+                    <button
+                      type="button"
+                      className="px-4 py-2 flex items-center gap-2 bg-yellow-50 text-yellow-500 rounded-lg font-medium hover:bg-yellow-500 hover:text-white transition-colors text-sm border-2 border-yellow-500"
+                      onClick={async () => {
+                        await handleSave();
+                        setShowConfetti(true);
+                        setShowCongrats(true);
+                        setTimeout(() => {
+                          onSave();
+                        }, 4000);
+                      }}
+                    >
+                      {saving ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Save className="w-4 h-4" />
+                      )}
+                      {saving ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Preview Panel */}
+        {/* Right Column - Preview */}
         <div className="lg:col-span-1">
           <div className="sticky top-6">
             <CardPreview
@@ -1166,64 +1233,5 @@ export const CardEditor: React.FC<CardEditorProps> = ({ existingCard, onSave, on
         </div>
       </div>
     </div>
-    </>
-  );
-};
-
-// Social Link Form Component
-const SocialLinkForm: React.FC<{ onAdd: (platform: string, username: string) => void }> = ({ onAdd }) => {
-  const [platform, setPlatform] = useState('');
-  const [username, setUsername] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (platform && username) {
-      onAdd(platform, username);
-      setPlatform('');
-      setUsername('');
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Platform
-          </label>
-          <select
-            value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">Select platform</option>
-            {Object.keys(SOCIAL_PLATFORMS).map((platformName) => (
-              <option key={platformName} value={platformName}>
-                {platformName}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Username/URL
-          </label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder={platform ? SOCIAL_PLATFORMS[platform]?.placeholder : 'Enter username or URL'}
-          />
-        </div>
-      </div>
-      <button
-        type="submit"
-        disabled={!platform || !username}
-        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        Add Social Link
-      </button>
-    </form>
   );
 };
